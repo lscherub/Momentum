@@ -14,6 +14,9 @@ create table public.tasks (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid references public.users(id) on delete cascade not null,
   title text not null,
+  type text check (type in ('task', 'reminder')) default 'task',
+  notification_enabled boolean default false,
+  notification_interval integer,
   priority text check (priority in ('High', 'Medium', 'Low')) default 'Medium',
   estimated_minutes integer,
   pomodoro_enabled boolean default false,
@@ -46,6 +49,11 @@ create table public.bucket_items (
   bucket_id uuid references public.buckets(id) on delete cascade not null,
   title text not null,
   emoji text,
+  type text check (type in ('task', 'reminder')) default 'task',
+  notification_enabled boolean default false,
+  notification_interval integer,
+  completed_today boolean default false,
+  last_completed_date date,
   order_index integer default 0
 );
 

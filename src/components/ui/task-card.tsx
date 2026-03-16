@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Timer, CheckCircle2 } from "lucide-react";
+import { Timer, CheckCircle2, Pencil } from "lucide-react";
 import { Card } from "./card";
 import { Button } from "./button";
 
@@ -8,6 +8,9 @@ export interface Task {
   id: string;
   title: string;
   priority: "High" | "Medium" | "Low";
+  type?: "task" | "reminder";
+  notification_enabled?: boolean;
+  notification_interval?: number | null;
   estimated_minutes?: number;
   pomodoro_enabled: boolean;
   pomodoro_length: number;
@@ -20,10 +23,11 @@ interface TaskCardProps {
   task: Task;
   onStartFocus?: (task: Task) => void;
   onComplete?: (task: Task) => void;
+  onEdit?: (task: Task) => void;
   className?: string;
 }
 
-export function TaskCard({ task, onStartFocus, onComplete, className }: TaskCardProps) {
+export function TaskCard({ task, onStartFocus, onComplete, onEdit, className }: TaskCardProps) {
   const priorityColors = {
     High: "bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400",
     Medium: "bg-orange-500/10 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400",
@@ -31,7 +35,10 @@ export function TaskCard({ task, onStartFocus, onComplete, className }: TaskCard
   };
 
   return (
-    <Card className={cn("group flex items-center justify-between p-4 hover-lift", className)}>
+    <Card
+      className={cn("group flex items-center justify-between p-4 hover-lift", className)}
+      onClick={() => onEdit?.(task)}
+    >
       <div className="flex flex-col gap-1.5">
         <h4 className={cn("font-medium transition-colors", task.completed && "line-through text-black/40 dark:text-white/40")}>
           {task.title}
@@ -50,13 +57,41 @@ export function TaskCard({ task, onStartFocus, onComplete, className }: TaskCard
       </div>
       
       <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        {onEdit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit(task);
+            }}
+            className="text-black/40 hover:text-black dark:text-white/40 dark:hover:text-white"
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
+        )}
         {!task.completed && onStartFocus && (
-          <Button variant="outline" size="sm" onClick={() => onStartFocus(task)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              onStartFocus(task);
+            }}
+          >
             Focus
           </Button>
         )}
         {!task.completed && onComplete && (
-          <Button variant="ghost" size="icon" onClick={() => onComplete(task)} className="text-black/40 hover:text-green-600 dark:text-white/40 dark:hover:text-green-400">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(event) => {
+              event.stopPropagation();
+              onComplete(task);
+            }}
+            className="text-black/40 hover:text-green-600 dark:text-white/40 dark:hover:text-green-400"
+          >
             <CheckCircle2 className="w-5 h-5" />
           </Button>
         )}

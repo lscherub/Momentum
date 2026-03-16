@@ -16,7 +16,8 @@ export function Navbar() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-2 rounded-[24px] bg-white/80 dark:bg-black/80 backdrop-blur-md shadow-sm border border-black/5 dark:border-white/5 transition-all">
+    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(360px,92vw)]">
+      <div className="flex items-center justify-between w-full px-3 py-2 rounded-[22px] bg-white/85 dark:bg-black/85 backdrop-blur-md shadow-sm border border-black/5 dark:border-white/5">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = pathname === item.href;
@@ -25,7 +26,7 @@ export function Navbar() {
             key={item.href}
             href={item.href}
             className={cn(
-              "flex flex-col items-center justify-center w-14 h-14 rounded-[18px] transition-all duration-200 active:scale-95",
+              "flex flex-col items-center justify-center w-16 h-12 rounded-[16px] transition-all duration-200 active:scale-95",
               isActive
                 ? "bg-black text-white dark:bg-white dark:text-black shadow-sm"
                 : "text-black/50 dark:text-white/50 hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"
@@ -38,6 +39,7 @@ export function Navbar() {
           </Link>
         );
       })}
+      </div>
     </nav>
   );
 }

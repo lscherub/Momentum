@@ -10,11 +10,22 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<AppUser | null>(null);
+  const [notificationInterval, setNotificationInterval] = useState("60");
 
   useEffect(() => {
     setMounted(true);
     getCurrentUser().then(setUser);
+    if (typeof window !== "undefined") {
+      setNotificationInterval(localStorage.getItem("momentum_notification_interval") ?? "60");
+    }
   }, []);
+
+  function handleIntervalChange(value: string) {
+    setNotificationInterval(value);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("momentum_notification_interval", value);
+    }
+  }
 
   if (!mounted) return null;
 
@@ -25,6 +36,26 @@ export default function SettingsPage() {
       </header>
 
       <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Notifications</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="text-sm text-black/60 dark:text-white/60">
+              Default reminder frequency
+            </div>
+            <select
+              value={notificationInterval}
+              onChange={(e) => handleIntervalChange(e.target.value)}
+              className="w-full h-10 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
+            >
+              <option value="60">Every hour</option>
+              <option value="120">Every 2 hours</option>
+              <option value="180">Every 3 hours</option>
+              <option value="random">Randomized</option>
+            </select>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Appearance</CardTitle>

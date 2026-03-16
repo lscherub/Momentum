@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppUser, getCurrentUser, signIn, signOut } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -8,17 +9,30 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { TaskCard, type Task } from "@/components/ui/task-card";
-import { LogOut, Plus, Search, Sparkles } from "lucide-react";
+import { LogOut, Plus, Sparkles, Trash2, X } from "lucide-react";
 
 export default function Home() {
+  const router = useRouter();
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [usernameInput, setUsernameInput] = useState("");
   const [viewMode, setViewMode] = useState<"momentum" | "tasks">("momentum");
   
-  // New task input
+  // Quick add input
   const [newTaskTitle, setNewTaskTitle] = useState("");
+
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [formTitle, setFormTitle] = useState("");
+  const [formPriority, setFormPriority] = useState<Task["priority"]>("Medium");
+  const [formType, setFormType] = useState<"task" | "reminder">("task");
+  const [formEstimatedMinutes, setFormEstimatedMinutes] = useState("");
+  const [formPomodoroEnabled, setFormPomodoroEnabled] = useState(false);
+  const [formPomodoroLength, setFormPomodoroLength] = useState("25");
+  const [formKeepUntilDone, setFormKeepUntilDone] = useState(false);
+  const [formNotificationEnabled, setFormNotificationEnabled] = useState(false);
+  const [formNotificationInterval, setFormNotificationInterval] = useState("60");
 
   useEffect(() => {
     checkAuth();
@@ -29,6 +43,31 @@ export default function Home() {
       loadTodayTasks();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (editingTask) {
+      setFormTitle(editingTask.title);
+      setFormPriority(editingTask.priority);
+      setFormType(editingTask.type ?? "task");
+      setFormEstimatedMinutes(editingTask.estimated_minutes ? String(editingTask.estimated_minutes) : "");
+      setFormPomodoroEnabled(editingTask.pomodoro_enabled ?? false);
+      setFormPomodoroLength(String(editingTask.pomodoro_length ?? 25));
+      setFormKeepUntilDone(editingTask.keep_until_done ?? false);
+      setFormNotificationEnabled(editingTask.notification_enabled ?? false);
+      setFormNotificationInterval(String(editingTask.notification_interval ?? 60));
+      setShowTaskForm(true);
+    }
+  }, [editingTask]);
+
+  function getDefaultNotificationInterval() {
+    if (typeof window === "undefined") return "60";
+    const stored = localStorage.getItem("momentum_notification_interval") ?? "60";
+    if (stored === "random") {
+      const options = [60, 120, 180];
+      return String(options[Math.floor(Math.random() * options.length)]);
+    }
+    return stored;
+  }
 
   async function checkAuth() {
     setLoading(true);
@@ -57,7 +96,7 @@ export default function Home() {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("tasks")
       .select("*")
       .eq("user_id", user.id)
@@ -74,22 +113,42 @@ export default function Home() {
     e.preventDefault();
     if (!newTaskTitle.trim() || !user) return;
     
-    // Optimistic insert
     const newTask = {
       user_id: user.id,
       title: newTaskTitle.trim(),
       priority: "Medium",
+      type: "task",
     };
 
     setNewTaskTitle("");
-    const { data } = await supabase.from("tasks").insert([newTask]).select().single();
+    const optimisticTask: Task = {
+      id: `temp-${crypto.randomUUID()}`,
+      title: newTask.title,
+      priority: "Medium",
+      type: "task",
+      notification_enabled: false,
+      notification_interval: null,
+      estimated_minutes: undefined,
+      pomodoro_enabled: false,
+      pomodoro_length: 25,
+      keep_until_done: false,
+      completed: false,
+      created_at: new Date().toISOString(),
+    };
+    setTasks((prev) => [optimisticTask, ...prev]);
+
+    const { data, error } = await supabase.from("tasks").insert([newTask]).select().single();
     if (data) {
-      setTasks([data as Task, ...tasks]);
+      setTasks((prev) => [data as Task, ...prev.filter((task) => task.id !== optimisticTask.id)]);
+    } else {
+      setTasks((prev) => prev.filter((task) => task.id !== optimisticTask.id));
+      console.error("Failed to create task", newTask.title, error?.message);
     }
   }
 
   async function completeTask(task: Task) {
-    const { data } = await supabase
+    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, completed: true } : t));
+    const { data, error } = await supabase
       .from("tasks")
       .update({ completed: true })
       .eq("id", task.id)
@@ -97,8 +156,112 @@ export default function Home() {
       .single();
     if (data) {
       setTasks((prev) => prev.map((t) => t.id === task.id ? data as Task : t));
+    } else if (error) {
+      console.error("Failed to complete task", task.id, error.message);
     }
   }
+
+  function openNewTaskForm() {
+    const defaultInterval = getDefaultNotificationInterval();
+    setEditingTask(null);
+    setFormTitle("");
+    setFormPriority("Medium");
+    setFormType("task");
+    setFormEstimatedMinutes("");
+    setFormPomodoroEnabled(false);
+    setFormPomodoroLength("25");
+    setFormKeepUntilDone(false);
+    setFormNotificationEnabled(false);
+    setFormNotificationInterval(defaultInterval);
+    setShowTaskForm(true);
+  }
+
+  async function handleSaveTask(event: React.FormEvent) {
+    event.preventDefault();
+    if (!user || !formTitle.trim()) return;
+
+    const payload = {
+      title: formTitle.trim(),
+      priority: formPriority,
+      type: formType,
+      notification_enabled: formType === "reminder" ? formNotificationEnabled : false,
+      notification_interval: formType === "reminder" && formNotificationEnabled ? Number(formNotificationInterval || 60) : null,
+      estimated_minutes: formEstimatedMinutes ? Number(formEstimatedMinutes) : null,
+      pomodoro_enabled: formPomodoroEnabled,
+      pomodoro_length: formPomodoroEnabled ? Number(formPomodoroLength || 25) : 25,
+      keep_until_done: formKeepUntilDone,
+    };
+
+    if (editingTask) {
+      const optimisticUpdate = { ...editingTask, ...payload } as Task;
+      setTasks((prev) => prev.map((task) => task.id === editingTask.id ? optimisticUpdate : task));
+      setShowTaskForm(false);
+      setEditingTask(null);
+      const { data, error } = await supabase
+        .from("tasks")
+        .update(payload)
+        .eq("id", editingTask.id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+      if (data) {
+        setTasks((prev) => prev.map((task) => task.id === editingTask.id ? data as Task : task));
+      } else {
+        console.error("Failed to update task", editingTask.id, error?.message);
+      }
+    } else {
+      const optimisticTask: Task = {
+        id: `temp-${crypto.randomUUID()}`,
+        title: payload.title,
+        priority: payload.priority,
+        type: payload.type,
+        notification_enabled: payload.notification_enabled,
+        notification_interval: payload.notification_interval,
+        estimated_minutes: payload.estimated_minutes ?? undefined,
+        pomodoro_enabled: payload.pomodoro_enabled,
+        pomodoro_length: payload.pomodoro_length,
+        keep_until_done: payload.keep_until_done,
+        completed: false,
+        created_at: new Date().toISOString(),
+      };
+      setTasks((prev) => [optimisticTask, ...prev]);
+      setShowTaskForm(false);
+
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert([{ ...payload, user_id: user.id }])
+        .select()
+        .single();
+      if (data) {
+        setTasks((prev) => [data as Task, ...prev.filter((task) => task.id !== optimisticTask.id)]);
+      } else {
+        setTasks((prev) => prev.filter((task) => task.id !== optimisticTask.id));
+        console.error("Failed to create task", payload.title, error?.message);
+      }
+    }
+  }
+
+  async function handleDeleteTask(task: Task) {
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+    setShowTaskForm(false);
+    setEditingTask(null);
+    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
+    if (error) {
+      console.error("Failed to delete task", task.id, error.message);
+    }
+  }
+
+  function startFocus(task?: Task | null) {
+    if (task) {
+      sessionStorage.setItem("momentum_focus_task", JSON.stringify(task));
+    } else {
+      sessionStorage.removeItem("momentum_focus_task");
+    }
+    router.push("/focus");
+  }
+
+  const openTasks = tasks.filter((task) => !task.completed);
+  const suggestedTask = useMemo(() => openTasks[0], [openTasks]);
 
   if (loading) {
     return <div className="min-h-[80vh] flex items-center justify-center">...</div>;
@@ -173,7 +336,20 @@ export default function Home() {
             <CardContent>
               <ProgressBar value={progress} />
               <div className="mt-6">
-                <Button size="lg" className="w-full gap-2">
+                <Button
+                  size="lg"
+                  className="w-full gap-2"
+                  onClick={() => {
+                    if (suggestedTask) {
+                      startFocus(suggestedTask);
+                    } else {
+                      openNewTaskForm();
+                      setFormTitle("Take a deep breath");
+                      setFormPriority("Low");
+                      setFormType("reminder");
+                    }
+                  }}
+                >
                   <Sparkles className="w-4 h-4" />
                   Start Something
                 </Button>
@@ -195,10 +371,16 @@ export default function Home() {
 
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">Up Next</h3>
-            {tasks.filter(t => !t.completed).slice(0, 3).map(task => (
-              <TaskCard key={task.id} task={task} onComplete={completeTask} onStartFocus={() => {}} />
+            {openTasks.slice(0, 3).map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                onComplete={completeTask}
+                onStartFocus={startFocus}
+                onEdit={setEditingTask}
+              />
             ))}
-            {tasks.filter(t => !t.completed).length === 0 && (
+            {openTasks.length === 0 && (
               <div className="text-center p-6 text-sm text-black/40 dark:text-white/40">
                 You're all caught up!
               </div>
@@ -224,7 +406,13 @@ export default function Home() {
 
           <div className="space-y-3">
             {tasks.map(task => (
-              <TaskCard key={task.id} task={task} onComplete={completeTask} />
+              <TaskCard
+                key={task.id}
+                task={task}
+                onComplete={completeTask}
+                onStartFocus={startFocus}
+                onEdit={setEditingTask}
+              />
             ))}
             {tasks.length === 0 && (
               <div className="text-center p-12 text-sm text-black/40 dark:text-white/40">
@@ -235,11 +423,142 @@ export default function Home() {
         </div>
       )}
 
+      {showTaskForm && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-[20px] bg-white dark:bg-black border border-black/10 dark:border-white/10 shadow-xl p-6 animate-in slide-in-from-bottom-4 duration-300">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">{editingTask ? "Edit Task" : "New Task"}</h2>
+                <p className="text-xs text-black/50 dark:text-white/50">Update details without leaving the page.</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => { setShowTaskForm(false); setEditingTask(null); }}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <form className="space-y-4" onSubmit={handleSaveTask}>
+              <div className="space-y-2">
+                <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Title</label>
+                <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Task title" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Priority</label>
+                  <select
+                    value={formPriority}
+                    onChange={(e) => setFormPriority(e.target.value as Task["priority"])}
+                    className="w-full h-10 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
+                  >
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Type</label>
+                  <select
+                    value={formType}
+                    onChange={(e) => setFormType(e.target.value as "task" | "reminder")}
+                    className="w-full h-10 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
+                  >
+                    <option value="task">Task</option>
+                    <option value="reminder">Reminder</option>
+                  </select>
+                </div>
+              </div>
+              {formType === "reminder" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Notifications</label>
+                    <button
+                      type="button"
+                      onClick={() => setFormNotificationEnabled(!formNotificationEnabled)}
+                      className={`h-10 w-full rounded-[12px] border text-sm ${formNotificationEnabled ? "bg-black text-white dark:bg-white dark:text-black border-transparent" : "border-black/10 dark:border-white/10 text-black/60 dark:text-white/60"}`}
+                    >
+                      {formNotificationEnabled ? "Enabled" : "Off"}
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Interval</label>
+                    <select
+                      value={formNotificationInterval}
+                      onChange={(e) => setFormNotificationInterval(e.target.value)}
+                      disabled={!formNotificationEnabled}
+                      className="w-full h-10 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
+                    >
+                      <option value="60">Every hour</option>
+                      <option value="120">Every 2 hours</option>
+                      <option value="180">Every 3 hours</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Estimated Minutes</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={formEstimatedMinutes}
+                    onChange={(e) => setFormEstimatedMinutes(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Pomodoro</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormPomodoroEnabled(!formPomodoroEnabled)}
+                      className={`h-10 flex-1 rounded-[12px] border text-sm ${formPomodoroEnabled ? "bg-black text-white dark:bg-white dark:text-black border-transparent" : "border-black/10 dark:border-white/10 text-black/60 dark:text-white/60"}`}
+                    >
+                      {formPomodoroEnabled ? "On" : "Off"}
+                    </button>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={formPomodoroLength}
+                      onChange={(e) => setFormPomodoroLength(e.target.value)}
+                      disabled={!formPomodoroEnabled}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="keep-until-done"
+                  type="checkbox"
+                  checked={formKeepUntilDone}
+                  onChange={(e) => setFormKeepUntilDone(e.target.checked)}
+                  className="h-4 w-4 rounded border border-black/20 dark:border-white/20"
+                />
+                <label htmlFor="keep-until-done" className="text-sm text-black/60 dark:text-white/60">
+                  Keep until done
+                </label>
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <Button type="submit" className="flex-1">{editingTask ? "Save Changes" : "Create"}</Button>
+                {editingTask && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 text-red-500 border-red-500/30 hover:bg-red-500/10"
+                    onClick={() => handleDeleteTask(editingTask)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </Button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Floating Action Button */}
       <Button
         size="icon"
         className="fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-lg hover:scale-105 active:scale-95 transition-transform bg-black text-white dark:bg-white dark:text-black z-50"
-        onClick={() => document.getElementById("quick-add-input")?.focus()}
+        onClick={openNewTaskForm}
       >
         <Plus className="w-6 h-6" />
       </Button>
