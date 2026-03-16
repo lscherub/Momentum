@@ -435,10 +435,10 @@ export default function Home() {
                 <X className="w-4 h-4" />
               </Button>
             </div>
-            <form className="space-y-4" onSubmit={handleSaveTask}>
+            <form className="space-y-5" onSubmit={handleSaveTask}>
               <div className="space-y-2">
                 <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Title</label>
-                <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Task title" />
+                <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Task title" className="h-11" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -446,7 +446,7 @@ export default function Home() {
                   <select
                     value={formPriority}
                     onChange={(e) => setFormPriority(e.target.value as Task["priority"])}
-                    className="w-full h-10 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
+                    className="w-full h-11 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
                   >
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -458,7 +458,7 @@ export default function Home() {
                   <select
                     value={formType}
                     onChange={(e) => setFormType(e.target.value as "task" | "reminder")}
-                    className="w-full h-10 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
+                    className="w-full h-11 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
                   >
                     <option value="task">Task</option>
                     <option value="reminder">Reminder</option>
@@ -466,13 +466,13 @@ export default function Home() {
                 </div>
               </div>
               {formType === "reminder" && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 pt-1">
                   <div className="space-y-2">
                     <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Notifications</label>
                     <button
                       type="button"
                       onClick={() => setFormNotificationEnabled(!formNotificationEnabled)}
-                      className={`h-10 w-full rounded-[12px] border text-sm ${formNotificationEnabled ? "bg-black text-white dark:bg-white dark:text-black border-transparent" : "border-black/10 dark:border-white/10 text-black/60 dark:text-white/60"}`}
+                      className={`h-11 w-full rounded-[12px] border text-sm ${formNotificationEnabled ? "bg-black text-white dark:bg-white dark:text-black border-transparent" : "border-black/10 dark:border-white/10 text-black/60 dark:text-white/60"}`}
                     >
                       {formNotificationEnabled ? "Enabled" : "Off"}
                     </button>
@@ -483,7 +483,7 @@ export default function Home() {
                       value={formNotificationInterval}
                       onChange={(e) => setFormNotificationInterval(e.target.value)}
                       disabled={!formNotificationEnabled}
-                      className="w-full h-10 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
+                      className="w-full h-11 rounded-[12px] border border-black/10 dark:border-white/10 bg-transparent px-3 text-sm"
                     >
                       <option value="60">Every hour</option>
                       <option value="120">Every 2 hours</option>
@@ -501,26 +501,34 @@ export default function Home() {
                     value={formEstimatedMinutes}
                     onChange={(e) => setFormEstimatedMinutes(e.target.value)}
                     placeholder="Optional"
+                    className="h-11"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Pomodoro</label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFormPomodoroEnabled(!formPomodoroEnabled)}
-                      className={`h-10 flex-1 rounded-[12px] border text-sm ${formPomodoroEnabled ? "bg-black text-white dark:bg-white dark:text-black border-transparent" : "border-black/10 dark:border-white/10 text-black/60 dark:text-white/60"}`}
-                    >
-                      {formPomodoroEnabled ? "On" : "Off"}
-                    </button>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={formPomodoroLength}
-                      onChange={(e) => setFormPomodoroLength(e.target.value)}
-                      disabled={!formPomodoroEnabled}
-                    />
+              </div>
+              <div className="space-y-3 rounded-[14px] border border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.04] p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Pomodoro</label>
+                    <p className="text-[11px] text-black/40 dark:text-white/40">Auto-start focus timer.</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormPomodoroEnabled(!formPomodoroEnabled)}
+                    className={`h-11 w-24 rounded-[12px] border text-sm ${formPomodoroEnabled ? "bg-black text-white dark:bg-white dark:text-black border-transparent" : "border-black/10 dark:border-white/10 text-black/60 dark:text-white/60"}`}
+                  >
+                    {formPomodoroEnabled ? "On" : "Off"}
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={formPomodoroLength}
+                    onChange={(e) => setFormPomodoroLength(e.target.value)}
+                    disabled={!formPomodoroEnabled}
+                    className="h-11 flex-1"
+                  />
+                  <span className="text-sm text-black/50 dark:text-white/50">minutes</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
