@@ -6,7 +6,6 @@ export interface NotificationPayload {
 }
 
 const scheduledNotifications = new Map<string, number>();
-const scheduledTimeoutNotifications = new Map<string, number>();
 
 export async function ensureNotificationPermission(): Promise<NotificationPermission> {
   if (typeof window === "undefined" || !("Notification" in window)) {
@@ -39,39 +38,11 @@ export function scheduleNotification(payload: NotificationPayload) {
   scheduledNotifications.set(payload.id, handle);
 }
 
-export function scheduleOneTimeNotification(payload: { id: string; title: string; body?: string; delayMs: number }) {
-  if (typeof window === "undefined" || !("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
-  if (scheduledTimeoutNotifications.has(payload.id)) return;
-
-  const handle = window.setTimeout(() => {
-    new Notification(payload.title, {
-      body: payload.body,
-    });
-    scheduledTimeoutNotifications.delete(payload.id);
-  }, payload.delayMs);
-
-  scheduledTimeoutNotifications.set(payload.id, handle);
-}
-
 export function clearScheduledNotification(id: string) {
   const handle = scheduledNotifications.get(id);
   if (handle) {
     window.clearInterval(handle);
     scheduledNotifications.delete(id);
-  }
-  const timeoutHandle = scheduledTimeoutNotifications.get(id);
-  if (timeoutHandle) {
-    window.clearTimeout(timeoutHandle);
-    scheduledTimeoutNotifications.delete(id);
-  }
-}
-
-export function clearOneTimeNotification(id: string) {
-  const timeoutHandle = scheduledTimeoutNotifications.get(id);
-  if (timeoutHandle) {
-    window.clearTimeout(timeoutHandle);
-    scheduledTimeoutNotifications.delete(id);
   }
 }
 
@@ -80,8 +51,4 @@ export function resetAllScheduledNotifications() {
     window.clearInterval(handle);
   });
   scheduledNotifications.clear();
-  scheduledTimeoutNotifications.forEach((handle) => {
-    window.clearTimeout(handle);
-  });
-  scheduledTimeoutNotifications.clear();
 }

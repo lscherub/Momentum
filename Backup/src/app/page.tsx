@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { TaskCard, type Task } from "@/components/ui/task-card";
 import { LogOut, Plus, Sparkles, Trash2, X } from "lucide-react";
-import { clearOneTimeNotification, clearScheduledNotification, ensureNotificationPermission, resetAllScheduledNotifications, scheduleNotification } from "@/lib/notifications";
+import { clearScheduledNotification, ensureNotificationPermission, resetAllScheduledNotifications, scheduleNotification } from "@/lib/notifications";
 
 export default function Home() {
   const router = useRouter();
@@ -308,11 +308,9 @@ export default function Home() {
   function startFocus(task?: Task | null) {
     if (task) {
       sessionStorage.setItem("momentum_focus_task", JSON.stringify(task));
-      sessionStorage.removeItem("momentum_focus_custom");
     } else {
       sessionStorage.removeItem("momentum_focus_task");
     }
-    clearOneTimeNotification("focus-session");
     router.push("/focus");
   }
 
@@ -548,6 +546,19 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Estimated Minutes</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={formEstimatedMinutes}
+                    onChange={(e) => setFormEstimatedMinutes(e.target.value)}
+                    placeholder="Optional"
+                    className="h-11"
+                  />
+                </div>
+              </div>
               <div className="space-y-3 rounded-[14px] border border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.04] p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -572,19 +583,6 @@ export default function Home() {
                     className="h-11 flex-1"
                   />
                   <span className="text-sm text-black/50 dark:text-white/50">minutes</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-3">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium uppercase text-black/50 dark:text-white/50">Estimated Minutes</label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={formEstimatedMinutes}
-                    onChange={(e) => setFormEstimatedMinutes(e.target.value)}
-                    placeholder="Optional"
-                    className="h-11"
-                  />
                 </div>
               </div>
               <div className="flex items-center gap-2">
