@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
 import { Navbar } from "@/components/navbar";
+import { PwaClient } from "@/components/pwa-client";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -46,6 +47,7 @@ export default function RootLayout({
             {children}
           </main>
           <Navbar />
+          <PwaClient />
         </ThemeProvider>
       </body>
     </html>

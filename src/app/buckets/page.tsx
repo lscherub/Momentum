@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Plus, Trash2, Pencil, X } from "lucide-react";
+import { clearScheduledNotification, ensureNotificationPermission, resetAllScheduledNotifications, scheduleNotification } from "@/lib/notifications";
 
 interface Bucket {
   id: string;
-  name: string;
+  title: string;
+  created_at?: string;
 }
 
 interface BucketItem {
@@ -52,7 +54,7 @@ export default function BucketsPage() {
 
   useEffect(() => {
     if (editingBucket) {
-      setBucketName(editingBucket.name);
+      setBucketName(editingBucket.title);
       setShowBucketForm(true);
     }
   }, [editingBucket]);
@@ -85,12 +87,25 @@ export default function BucketsPage() {
     if (!currentUser) return;
 
     // Load buckets
-    const { data: bData } = await supabase.from("buckets").select("*").eq("user_id", currentUser.id);
+    const { data: bData, error: bucketError } = await supabase
+      .from("buckets")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: true });
+    if (bucketError) {
+      console.error("Failed to load buckets", bucketError.message);
+    }
     if (bData && bData.length > 0) {
       setBuckets(bData);
       // Load items
       const bIds = bData.map(b => b.id);
-      const { data: iData } = await supabase.from("bucket_items").select("*").in("bucket_id", bIds);
+      const { data: iData, error: itemError } = await supabase
+        .from("bucket_items")
+        .select("*")
+        .in("bucket_id", bIds);
+      if (itemError) {
+        console.error("Failed to load bucket items", itemError.message);
+      }
       if (iData) {
         const grouped: Record<string, BucketItem[]> = {};
         const today = new Date().toISOString().split("T")[0];
@@ -103,20 +118,41 @@ export default function BucketsPage() {
           if (!grouped[item.bucket_id]) grouped[item.bucket_id] = [];
           grouped[item.bucket_id].push(normalized);
           if (!completedToday && item.completed_today) {
-            supabase.from("bucket_items").update({ completed_today: false, last_completed_date: null }).eq("id", item.id);
+            supabase
+              .from("bucket_items")
+              .update({ completed_today: false, last_completed_date: null })
+              .eq("id", item.id);
           }
         });
         setItems(grouped);
+        resetAllScheduledNotifications();
+        ensureNotificationPermission().then((permission) => {
+          if (permission === "granted") {
+            iData.forEach((item) => {
+              if (item.type === "reminder" && item.notification_enabled && item.notification_interval) {
+                scheduleNotification({
+                  id: `bucket-item-${item.id}`,
+                  title: item.title,
+                  body: "Momentum reminder",
+                  intervalMinutes: item.notification_interval,
+                });
+              }
+            });
+          }
+        });
       }
-    } else {
-      // Seed default buckets
-      createDefaultBuckets(currentUser.id);
+    } else if (!bucketError) {
+      setBuckets([]);
+      setItems({});
     }
   }
 
   async function createDefaultBuckets(userId: string) {
-    const defaultBuckets = [{ name: "Morning Reset" }, { name: "Mental Recovery" }];
-    const { data, error } = await supabase.from("buckets").insert(defaultBuckets.map(b => ({ ...b, user_id: userId }))).select();
+    const defaultBuckets = [{ title: "Morning Reset" }, { title: "Mental Recovery" }];
+    const { data, error } = await supabase
+      .from("buckets")
+      .insert(defaultBuckets.map(b => ({ ...b, user_id: userId })))
+      .select();
     if (data) {
       setBuckets(data);
       const itemsToInsert = [
@@ -151,34 +187,43 @@ export default function BucketsPage() {
     if (!user || !bucketName.trim()) return;
 
     if (editingBucket) {
-      const updated = { ...editingBucket, name: bucketName.trim() };
+      const updated = { ...editingBucket, title: bucketName.trim() };
       setBuckets((prev) => prev.map((bucket) => bucket.id === editingBucket.id ? updated : bucket));
       setShowBucketForm(false);
       setEditingBucket(null);
-      const { data } = await supabase.from("buckets").update({ name: updated.name }).eq("id", updated.id).select().single();
+      const { data, error } = await supabase
+        .from("buckets")
+        .update({ title: updated.title })
+        .eq("id", updated.id)
+        .select()
+        .single();
       if (data) {
         setBuckets((prev) => prev.map((bucket) => bucket.id === updated.id ? data : bucket));
       } else {
-        console.error("Failed to update bucket", updated.id);
+        console.error("Failed to update bucket", updated.id, error?.message);
       }
       return;
     }
 
     const optimisticBucket: Bucket = {
       id: `temp-${crypto.randomUUID()}`,
-      name: bucketName.trim(),
+      title: bucketName.trim(),
     };
     setBuckets((prev) => [...prev, optimisticBucket]);
     setBucketName("");
     setShowBucketForm(false);
 
-    const { data, error } = await supabase.from("buckets").insert([{ name: optimisticBucket.name, user_id: user.id }]).select().single();
+    const { data, error } = await supabase
+      .from("buckets")
+      .insert([{ title: optimisticBucket.title, user_id: user.id }])
+      .select()
+      .single();
     if (data) {
       setBuckets((prev) => prev.map((bucket) => bucket.id === optimisticBucket.id ? data : bucket));
       setActiveBucketId(data.id);
     } else {
       setBuckets((prev) => prev.filter((bucket) => bucket.id !== optimisticBucket.id));
-      console.error("Failed to create bucket", optimisticBucket.name, error?.message);
+      console.error("Failed to create bucket", optimisticBucket.title, error?.message);
     }
   }
 
@@ -234,6 +279,20 @@ export default function BucketsPage() {
           ...prev,
           [activeBucketId]: (prev[activeBucketId] ?? []).map((item) => item.id === updated.id ? data : item),
         }));
+        if (data.type === "reminder" && data.notification_enabled && data.notification_interval) {
+          ensureNotificationPermission().then((permission) => {
+            if (permission === "granted") {
+              scheduleNotification({
+                id: `bucket-item-${data.id}`,
+                title: data.title,
+                body: "Momentum reminder",
+                intervalMinutes: data.notification_interval,
+              });
+            }
+          });
+        } else {
+          clearScheduledNotification(`bucket-item-${data.id}`);
+        }
       } else {
         console.error("Failed to update bucket item", updated.id, error?.message);
       }
@@ -281,6 +340,18 @@ export default function BucketsPage() {
         ...prev,
         [activeBucketId]: (prev[activeBucketId] ?? []).map((item) => item.id === optimisticItem.id ? data : item),
       }));
+      if (data.type === "reminder" && data.notification_enabled && data.notification_interval) {
+        ensureNotificationPermission().then((permission) => {
+          if (permission === "granted") {
+            scheduleNotification({
+              id: `bucket-item-${data.id}`,
+              title: data.title,
+              body: "Momentum reminder",
+              intervalMinutes: data.notification_interval,
+            });
+          }
+        });
+      }
     } else {
       setItems((prev) => ({
         ...prev,
@@ -300,6 +371,7 @@ export default function BucketsPage() {
     if (error) {
       console.error("Failed to delete bucket item", item.id);
     }
+    clearScheduledNotification(`bucket-item-${item.id}`);
   }
 
   async function handleSetReminder(item: BucketItem) {
@@ -367,7 +439,7 @@ export default function BucketsPage() {
               onClick={() => setActiveBucketId(bucket.id)}
               className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition ${activeBucketId === bucket.id ? "bg-black text-white dark:bg-white dark:text-black" : "bg-black/5 dark:bg-white/10 text-black/60 dark:text-white/60"}`}
             >
-              {bucket.name}
+              {bucket.title}
             </button>
           ))}
           <button
@@ -381,7 +453,7 @@ export default function BucketsPage() {
         {activeBucketId && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-medium px-1">{buckets.find((bucket) => bucket.id === activeBucketId)?.name}</h3>
+              <h3 className="font-medium px-1">{buckets.find((bucket) => bucket.id === activeBucketId)?.title}</h3>
               {activeBucketId && (
                 <div className="flex gap-2">
                   <Button variant="ghost" size="icon" onClick={() => setEditingBucket(buckets.find((bucket) => bucket.id === activeBucketId) || null)}>

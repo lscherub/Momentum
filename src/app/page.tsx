@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { TaskCard, type Task } from "@/components/ui/task-card";
 import { LogOut, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { clearScheduledNotification, ensureNotificationPermission, resetAllScheduledNotifications, scheduleNotification } from "@/lib/notifications";
 
 export default function Home() {
   const router = useRouter();
@@ -96,7 +97,7 @@ export default function Home() {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("tasks")
       .select("*")
       .eq("user_id", user.id)
@@ -104,8 +105,27 @@ export default function Home() {
       .order("created_at", { ascending: false })
       .limit(10);
       
+    if (error) {
+      console.error("Failed to load tasks", error.message);
+      return;
+    }
     if (data) {
       setTasks(data as Task[]);
+      resetAllScheduledNotifications();
+      ensureNotificationPermission().then((permission) => {
+        if (permission === "granted") {
+          data.forEach((task) => {
+            if (task.type === "reminder" && task.notification_enabled && task.notification_interval) {
+              scheduleNotification({
+                id: `task-${task.id}`,
+                title: task.title,
+                body: "Momentum reminder",
+                intervalMinutes: task.notification_interval,
+              });
+            }
+          });
+        }
+      });
     }
   }
 
@@ -118,6 +138,13 @@ export default function Home() {
       title: newTaskTitle.trim(),
       priority: "Medium",
       type: "task",
+      notification_enabled: false,
+      notification_interval: null,
+      estimated_minutes: null,
+      pomodoro_enabled: false,
+      pomodoro_length: 25,
+      keep_until_done: false,
+      completed: false,
     };
 
     setNewTaskTitle("");
@@ -206,6 +233,20 @@ export default function Home() {
         .single();
       if (data) {
         setTasks((prev) => prev.map((task) => task.id === editingTask.id ? data as Task : task));
+        if (data.type === "reminder" && data.notification_enabled && data.notification_interval) {
+          ensureNotificationPermission().then((permission) => {
+            if (permission === "granted") {
+              scheduleNotification({
+                id: `task-${data.id}`,
+                title: data.title,
+                body: "Momentum reminder",
+                intervalMinutes: data.notification_interval,
+              });
+            }
+          });
+        } else {
+          clearScheduledNotification(`task-${data.id}`);
+        }
       } else {
         console.error("Failed to update task", editingTask.id, error?.message);
       }
@@ -229,11 +270,23 @@ export default function Home() {
 
       const { data, error } = await supabase
         .from("tasks")
-        .insert([{ ...payload, user_id: user.id }])
+        .insert([{ ...payload, user_id: user.id, completed: false }])
         .select()
         .single();
       if (data) {
         setTasks((prev) => [data as Task, ...prev.filter((task) => task.id !== optimisticTask.id)]);
+        if (data.type === "reminder" && data.notification_enabled && data.notification_interval) {
+          ensureNotificationPermission().then((permission) => {
+            if (permission === "granted") {
+              scheduleNotification({
+                id: `task-${data.id}`,
+                title: data.title,
+                body: "Momentum reminder",
+                intervalMinutes: data.notification_interval,
+              });
+            }
+          });
+        }
       } else {
         setTasks((prev) => prev.filter((task) => task.id !== optimisticTask.id));
         console.error("Failed to create task", payload.title, error?.message);
@@ -249,6 +302,7 @@ export default function Home() {
     if (error) {
       console.error("Failed to delete task", task.id, error.message);
     }
+    clearScheduledNotification(`task-${task.id}`);
   }
 
   function startFocus(task?: Task | null) {

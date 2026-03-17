@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 
 const TOKEN_KEY = "momentum_auth_token";
 const USERNAME_KEY = "momentum_username";
+const USER_ID_KEY = "momentum_user_id";
 
 export interface AppUser {
   id: string;
@@ -33,6 +34,7 @@ export async function signIn(username: string): Promise<AppUser | null> {
     if (existingUser.token !== token) {
       await supabase.from("users").update({ token }).eq("id", existingUser.id);
     }
+    localStorage.setItem(USER_ID_KEY, existingUser.id);
     return existingUser as AppUser;
   } else {
     // If we're here, user doesn't exist or RLS blocked reading them.
@@ -53,6 +55,9 @@ export async function signIn(username: string): Promise<AppUser | null> {
       }
       return null;
     }
+    if (newUser?.id) {
+      localStorage.setItem(USER_ID_KEY, newUser.id);
+    }
     return newUser as AppUser;
   }
 }
@@ -60,20 +65,37 @@ export async function signIn(username: string): Promise<AppUser | null> {
 export async function getCurrentUser(): Promise<AppUser | null> {
   const token = localStorage.getItem(TOKEN_KEY);
   const username = localStorage.getItem(USERNAME_KEY);
+  const storedUserId = localStorage.getItem(USER_ID_KEY);
 
   if (!token || !username) return null;
 
-  const { data: user } = await supabase
+  const { data: user, error } = await supabase
     .from("users")
     .select("*")
     .eq("token", token)
     .eq("username", username)
     .single();
 
-  return user as AppUser;
+  if (user) {
+    if (user.id) {
+      localStorage.setItem(USER_ID_KEY, user.id);
+    }
+    return user as AppUser;
+  }
+
+  if (error) {
+    console.error("Failed to load user session:", error.message);
+  }
+
+  if (storedUserId) {
+    return { id: storedUserId, username } as AppUser;
+  }
+
+  return null;
 }
 
 export function signOut() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USERNAME_KEY);
+  localStorage.removeItem(USER_ID_KEY);
 }
