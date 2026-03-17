@@ -93,6 +93,10 @@ body::after {
 }
 
 main, nav, header, footer {
-  position: relative;
+  /* position: relative; */
   z-index: 2;
 }
+
+/* .min-h-screen {
+  min-height: 90vh !important;
+} */

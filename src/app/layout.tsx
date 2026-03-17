@@ -42,7 +42,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <main className="min-h-screen pb-32">
+          <main className="min-h-screen">
             {children}
           </main>
           <Navbar />
