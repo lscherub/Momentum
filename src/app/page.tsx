@@ -305,7 +305,7 @@ export default function Home() {
     clearScheduledNotification(`task-${task.id}`);
   }
 
-  function startFocus(task?: Task | null) {
+  async function startFocus(task?: Task | null) {
     if (task) {
       sessionStorage.setItem("momentum_focus_task", JSON.stringify(task));
       sessionStorage.removeItem("momentum_focus_custom");
@@ -313,6 +313,7 @@ export default function Home() {
       sessionStorage.removeItem("momentum_focus_task");
     }
     clearOneTimeNotification("focus-session");
+    await ensureNotificationPermission();
     router.push("/focus");
   }
 

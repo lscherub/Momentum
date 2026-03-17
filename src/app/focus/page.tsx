@@ -138,12 +138,14 @@ export default function FocusPage() {
     clearOneTimeNotification("focus-session");
   };
 
-  const startCustomSession = () => {
+  const startCustomSession = async () => {
     const hours = Math.max(0, Number(customHours || 0));
     const minutes = Math.max(0, Number(customMinutes || 0));
     const seconds = Math.max(0, Number(customSeconds || 0));
     const durationSeconds = hours * 3600 + minutes * 60 + seconds;
     if (!durationSeconds) return;
+
+    await ensureNotificationPermission();
 
     const title = customTitle.trim() || "Custom Focus Session";
     sessionStorage.setItem("momentum_focus_custom", JSON.stringify({
@@ -192,12 +194,35 @@ export default function FocusPage() {
         totalSeconds={totalSeconds}
         remainingSeconds={timeLeft}
         isActive={isActive}
-        onToggleTimer={() => setIsActive(!isActive)}
+        onToggleTimer={async () => {
+          if (!isActive) {
+            await ensureNotificationPermission();
+          }
+          setIsActive(!isActive);
+          if (isActive) {
+            clearOneTimeNotification("focus-session");
+            setNotificationScheduledAt(null);
+          }
+        }}
         className="mb-16 scale-125"
       />
 
       <div className="flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-500 delay-200">
-        <Button variant="outline" size="lg" onClick={() => setIsActive(!isActive)} className="w-32">
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={async () => {
+            if (!isActive) {
+              await ensureNotificationPermission();
+            }
+            setIsActive(!isActive);
+            if (isActive) {
+              clearOneTimeNotification("focus-session");
+              setNotificationScheduledAt(null);
+            }
+          }}
+          className="w-32"
+        >
           {isActive ? "Pause" : "Start"}
         </Button>
         <Button
